@@ -20,6 +20,9 @@ struct NotchMenuView: View {
     @ObservedObject private var soundSelector = SoundSelector.shared
     @State private var hooksInstalled: Bool = false
     @State private var launchAtLogin: Bool = false
+    @State private var sseEnabled: Bool = AppSettings.sseEnabled
+    @State private var sseURL: String = AppSettings.sseEndpointURL ?? ""
+    @State private var sseToken: String = AppSettings.sseAuthToken ?? ""
 
     var body: some View {
         VStack(spacing: 4) {
@@ -76,6 +79,13 @@ struct NotchMenuView: View {
                 }
             }
 
+            // OpenCode SSE
+            SSEConfigSection(
+                sseEnabled: $sseEnabled,
+                sseURL: $sseURL,
+                sseToken: $sseToken
+            )
+
             AccessibilityRow(isEnabled: AXIsProcessTrusted())
 
             Divider()
@@ -123,6 +133,9 @@ struct NotchMenuView: View {
         hooksInstalled = HookInstaller.isInstalled()
         launchAtLogin = SMAppService.mainApp.status == .enabled
         screenSelector.refreshScreens()
+        sseEnabled = AppSettings.sseEnabled
+        sseURL = AppSettings.sseEndpointURL ?? ""
+        sseToken = AppSettings.sseAuthToken ?? ""
     }
 }
 
@@ -522,5 +535,91 @@ struct MenuToggleRow: View {
 
     private var textColor: Color {
         .white.opacity(isHovered ? 1.0 : 0.7)
+    }
+}
+
+// MARK: - SSE Config Section
+
+struct SSEConfigSection: View {
+    @Binding var sseEnabled: Bool
+    @Binding var sseURL: String
+    @Binding var sseToken: String
+
+    var body: some View {
+        VStack(spacing: 4) {
+            MenuToggleRow(
+                icon: "antenna.radiowaves.left.and.right",
+                label: "OpenCode SSE",
+                isOn: sseEnabled
+            ) {
+                sseEnabled.toggle()
+                AppSettings.sseEnabled = sseEnabled
+                Task {
+                    if sseEnabled {
+                        await SSEClient.shared.start()
+                    } else {
+                        await SSEClient.shared.stop()
+                    }
+                }
+            }
+
+            if sseEnabled {
+                VStack(spacing: 6) {
+                    SSETextField(placeholder: "https://localhost:8216/api/tasks/events/stream", text: $sseURL) {
+                        AppSettings.sseEndpointURL = sseURL
+                        Task {
+                            await SSEClient.shared.stop()
+                            await SSEClient.shared.start()
+                        }
+                    }
+
+                    SSETextField(placeholder: "Auth Token", text: $sseToken, isSecure: true) {
+                        AppSettings.sseAuthToken = sseToken
+                        Task {
+                            await SSEClient.shared.stop()
+                            await SSEClient.shared.start()
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 4)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: sseEnabled)
+    }
+}
+
+struct SSETextField: View {
+    let placeholder: String
+    @Binding var text: String
+    var isSecure: Bool = false
+    var onCommit: () -> Void
+
+    @State private var isFocused = false
+
+    var body: some View {
+        Group {
+            if isSecure {
+                SecureField(placeholder, text: $text)
+                    .onSubmit { onCommit() }
+            } else {
+                TextField(placeholder, text: $text)
+                    .onSubmit { onCommit() }
+            }
+        }
+        .textFieldStyle(.plain)
+        .font(.system(size: 11, design: .monospaced))
+        .foregroundColor(.white.opacity(0.8))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.white.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+                )
+        )
     }
 }

@@ -8,6 +8,12 @@
 
 import Foundation
 
+/// Where a session originated from
+enum SessionSource: Equatable, Sendable {
+    case claudeCode
+    case openCode
+}
+
 /// Complete state for a single Claude session
 /// This is the single source of truth - all state reads and writes go through SessionStore
 struct SessionState: Equatable, Identifiable, Sendable {
@@ -16,6 +22,7 @@ struct SessionState: Equatable, Identifiable, Sendable {
     let sessionId: String
     let cwd: String
     let projectName: String
+    let source: SessionSource
 
     // MARK: - Instance Metadata
 
@@ -68,6 +75,7 @@ struct SessionState: Equatable, Identifiable, Sendable {
         sessionId: String,
         cwd: String,
         projectName: String? = nil,
+        source: SessionSource = .claudeCode,
         pid: Int? = nil,
         tty: String? = nil,
         isInTmux: Bool = false,
@@ -86,6 +94,7 @@ struct SessionState: Equatable, Identifiable, Sendable {
         self.sessionId = sessionId
         self.cwd = cwd
         self.projectName = projectName ?? URL(fileURLWithPath: cwd).lastPathComponent
+        self.source = source
         self.pid = pid
         self.tty = tty
         self.isInTmux = isInTmux
@@ -182,6 +191,10 @@ struct SessionState: Equatable, Identifiable, Sendable {
     /// Whether the session can be interacted with
     var canInteract: Bool {
         phase.needsAttention
+    }
+
+    var isOpenCode: Bool {
+        source == .openCode
     }
 }
 

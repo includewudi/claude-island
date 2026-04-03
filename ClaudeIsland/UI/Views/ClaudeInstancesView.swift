@@ -28,7 +28,7 @@ struct ClaudeInstancesView: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(.white.opacity(0.4))
 
-            Text("Run claude in terminal")
+            Text("Run claude in terminal or enable OpenCode SSE")
                 .font(.system(size: 11))
                 .foregroundColor(.white.opacity(0.25))
         }
@@ -88,6 +88,23 @@ struct ClaudeInstancesView: View {
     // MARK: - Actions
 
     private func focusSession(_ session: SessionState) {
+        if session.isOpenCode {
+            // OpenCode sessions use pane_key stored in cwd field (e.g., "session:window:pane")
+            let paneTarget = session.cwd.replacingOccurrences(of: ":", with: ".")
+            Task.detached {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/tmux")
+                process.arguments = ["select-pane", "-t", paneTarget]
+                try? process.run()
+                process.waitUntilExit()
+            }
+            // Also bring Terminal/iTerm2 to front
+            Task {
+                _ = await YabaiController.shared.focusWindow(forWorkingDirectory: session.cwd)
+            }
+            return
+        }
+
         guard session.isInTmux else { return }
 
         Task {
@@ -131,6 +148,7 @@ struct InstanceRow: View {
     @State private var isYabaiAvailable = false
 
     private let claudeOrange = Color(red: 0.85, green: 0.47, blue: 0.34)
+    private let openCodeCyan = Color(red: 0.2, green: 0.75, blue: 0.85)
     private let spinnerSymbols = ["·", "✢", "✳", "∗", "✻", "✽"]
     private let spinnerTimer = Timer.publish(every: 0.15, on: .main, in: .common).autoconnect()
 
@@ -153,10 +171,21 @@ struct InstanceRow: View {
 
             // Text content
             VStack(alignment: .leading, spacing: 2) {
-                Text(session.displayTitle)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    if session.isOpenCode {
+                        Text("OC")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(openCodeCyan.opacity(0.9))
+                            .clipShape(RoundedRectangle(cornerRadius: 3))
+                    }
+                    Text(session.displayTitle)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                }
 
                 // Show tool call when waiting for approval, otherwise last activity
                 if isWaitingForApproval, let toolName = session.pendingToolName {
@@ -294,11 +323,12 @@ struct InstanceRow: View {
 
     @ViewBuilder
     private var stateIndicator: some View {
+        let activeColor = session.isOpenCode ? openCodeCyan : claudeOrange
         switch session.phase {
         case .processing, .compacting:
             Text(spinnerSymbols[spinnerPhase % spinnerSymbols.count])
                 .font(.system(size: 12, weight: .bold))
-                .foregroundColor(claudeOrange)
+                .foregroundColor(activeColor)
                 .onReceive(spinnerTimer) { _ in
                     spinnerPhase = (spinnerPhase + 1) % spinnerSymbols.count
                 }
@@ -311,7 +341,7 @@ struct InstanceRow: View {
                 }
         case .waitingForInput:
             Circle()
-                .fill(TerminalColors.green)
+                .fill(session.isOpenCode ? openCodeCyan : TerminalColors.green)
                 .frame(width: 6, height: 6)
         case .idle, .ended:
             Circle()

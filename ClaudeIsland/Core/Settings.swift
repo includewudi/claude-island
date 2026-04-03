@@ -38,6 +38,9 @@ enum AppSettings {
 
     private enum Keys {
         static let notificationSound = "notificationSound"
+        static let sseEnabled = "sseEnabled"
+        static let sseEndpointURL = "sseEndpointURL"
+        static let sseAuthToken = "sseAuthToken"
     }
 
     // MARK: - Notification Sound
@@ -54,5 +57,22 @@ enum AppSettings {
         set {
             defaults.set(newValue.rawValue, forKey: Keys.notificationSound)
         }
+    }
+
+    // MARK: - SSE (TmuxWeb/OpenCode)
+
+    static var sseEnabled: Bool {
+        get { defaults.bool(forKey: Keys.sseEnabled) }
+        set { defaults.set(newValue, forKey: Keys.sseEnabled) }
+    }
+
+    static var sseEndpointURL: String? {
+        get { defaults.string(forKey: Keys.sseEndpointURL) }
+        set { defaults.set(newValue, forKey: Keys.sseEndpointURL) }
+    }
+
+    static var sseAuthToken: String? {
+        get { defaults.string(forKey: Keys.sseAuthToken) }
+        set { defaults.set(newValue, forKey: Keys.sseAuthToken) }
     }
 }

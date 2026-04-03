@@ -54,6 +54,9 @@ actor SessionStore {
         case .hookReceived(let hookEvent):
             await processHookEvent(hookEvent)
 
+        case .sseEventReceived(let sseEvent):
+            await processSSEEvent(sseEvent)
+
         case .permissionApproved(let sessionId, let toolUseId):
             await processPermissionApproved(sessionId: sessionId, toolUseId: toolUseId)
 
@@ -179,6 +182,43 @@ actor SessionStore {
             isInTmux: false,  // Will be updated
             phase: .idle
         )
+    }
+
+    // MARK: - SSE Event Processing (TmuxWeb/OpenCode)
+
+    private func processSSEEvent(_ event: SSEEvent) async {
+        let sessionId = "oc-\(event.conversationId)"
+        let isNew = sessions[sessionId] == nil
+
+        var session = sessions[sessionId] ?? SessionState(
+            sessionId: sessionId,
+            cwd: event.paneKey,
+            projectName: event.projectName,
+            source: .openCode,
+            isInTmux: true,
+            phase: .idle
+        )
+
+        let newPhase = event.sessionPhase
+        if session.phase.canTransition(to: newPhase) {
+            session.phase = newPhase
+        }
+
+        session.conversationInfo = ConversationInfo(
+            summary: nil,
+            lastMessage: event.displayMessage,
+            lastMessageRole: event.displayMessageRole,
+            lastToolName: nil,
+            firstUserMessage: event.userMessage ?? session.conversationInfo.firstUserMessage,
+            lastUserMessageDate: event.type == .taskStarted ? Date() : session.conversationInfo.lastUserMessageDate
+        )
+        session.lastActivity = Date()
+
+        sessions[sessionId] = session
+
+        if isNew {
+            Self.logger.info("SSE: new OpenCode session \(sessionId.prefix(16), privacy: .public) from pane \(event.paneKey, privacy: .public)")
+        }
     }
 
     private func processToolTracking(event: HookEvent, session: inout SessionState) {

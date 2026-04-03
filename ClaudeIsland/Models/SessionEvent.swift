@@ -16,6 +16,11 @@ enum SessionEvent: Sendable {
     /// A hook event was received from Claude Code
     case hookReceived(HookEvent)
 
+    // MARK: - SSE Events (from TmuxWeb/OpenCode)
+
+    /// An SSE event was received from TmuxWeb
+    case sseEventReceived(SSEEvent)
+
     // MARK: - Permission Events (user actions)
 
     /// User approved a permission request
@@ -185,6 +190,8 @@ extension SessionEvent: CustomStringConvertible {
         switch self {
         case .hookReceived(let event):
             return "hookReceived(\(event.event), session: \(event.sessionId.prefix(8)))"
+        case .sseEventReceived(let event):
+            return "sseEventReceived(\(event.type.rawValue), conv: \(event.conversationId.prefix(8)))"
         case .permissionApproved(let sessionId, let toolUseId):
             return "permissionApproved(session: \(sessionId.prefix(8)), tool: \(toolUseId.prefix(12)))"
         case .permissionDenied(let sessionId, let toolUseId, _):

@@ -68,10 +68,18 @@ class ClaudeSessionMonitor: ObservableObject {
                 }
             }
         )
+
+        // Start SSE client for TmuxWeb/OpenCode notifications
+        Task {
+            await SSEClient.shared.start()
+        }
     }
 
     func stopMonitoring() {
         HookSocketServer.shared.stop()
+        Task {
+            await SSEClient.shared.stop()
+        }
     }
 
     // MARK: - Permission Handling
