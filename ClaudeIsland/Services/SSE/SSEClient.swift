@@ -85,7 +85,18 @@ actor SSEClient {
 
     private func connect() async throws {
         guard let urlString = AppSettings.sseEndpointURL,
-              let url = URL(string: urlString) else {
+              !urlString.isEmpty else {
+            throw SSEError.invalidURL
+        }
+
+        // Append auth token as query parameter (TmuxWeb auth supports ?token=)
+        var finalURLString = urlString
+        if let token = AppSettings.sseAuthToken, !token.isEmpty {
+            let separator = urlString.contains("?") ? "&" : "?"
+            finalURLString = "\(urlString)\(separator)token=\(token)"
+        }
+
+        guard let url = URL(string: finalURLString) else {
             throw SSEError.invalidURL
         }
 
@@ -93,11 +104,6 @@ actor SSEClient {
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         request.timeoutInterval = 0  // No timeout for SSE
-
-        // Add auth token if configured
-        if let token = AppSettings.sseAuthToken, !token.isEmpty {
-            request.setValue(token, forHTTPHeaderField: "x-auth-token")
-        }
 
         let session = URLSession(configuration: .default, delegate: SSESessionDelegate(), delegateQueue: nil)
         let (bytes, response) = try await session.bytes(for: request)
@@ -113,18 +119,15 @@ actor SSEClient {
         reconnectAttempts = 0
 
         // Parse SSE stream line by line
-        var dataBuffer = ""
         for try await line in bytes.lines {
             if Task.isCancelled { break }
 
             if line.hasPrefix("data: ") {
-                dataBuffer = String(line.dropFirst(6))
-            } else if line.isEmpty && !dataBuffer.isEmpty {
-                // Empty line = end of event
-                await processSSEData(dataBuffer)
-                dataBuffer = ""
+                let data = String(line.dropFirst(6))
+                await processSSEData(data)
             }
         }
+        Self.logger.warning("SSE bytes.lines iteration ended")
     }
 
     // MARK: - Event Processing

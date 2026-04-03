@@ -17,13 +17,13 @@ enum SSEEventType: String, Codable, Sendable {
 }
 
 /// A single SSE event from TmuxWeb
-struct SSEEvent: Codable, Sendable {
+struct SSEEvent: Sendable {
     let type: SSEEventType
     let conversationId: String
     let paneKey: String
     let userMessage: String?
     let assistantMessage: String?
-    let timestamp: String
+    let timestamp: Int  // Unix epoch seconds
 
     enum CodingKeys: String, CodingKey {
         case type
@@ -33,14 +33,38 @@ struct SSEEvent: Codable, Sendable {
         case assistantMessage = "assistant_message"
         case timestamp
     }
+}
 
-    /// Derive a display-friendly project name from pane_key (e.g., "my-session:0:1" → "my-session")
+// MARK: - Codable (handles timestamp as Int or String)
+
+extension SSEEvent: Codable {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        type = try c.decode(SSEEventType.self, forKey: .type)
+        conversationId = try c.decode(String.self, forKey: .conversationId)
+        paneKey = try c.decodeIfPresent(String.self, forKey: .paneKey) ?? ""
+        userMessage = try c.decodeIfPresent(String.self, forKey: .userMessage)
+        assistantMessage = try c.decodeIfPresent(String.self, forKey: .assistantMessage)
+        // TmuxWeb sends timestamp as integer (unix epoch), but handle String too
+        if let intVal = try? c.decode(Int.self, forKey: .timestamp) {
+            timestamp = intVal
+        } else if let strVal = try? c.decode(String.self, forKey: .timestamp),
+                  let parsed = Int(strVal) {
+            timestamp = parsed
+        } else {
+            timestamp = Int(Date().timeIntervalSince1970)
+        }
+    }
+}
+
+// MARK: - Computed Properties
+
+extension SSEEvent {
     var projectName: String {
         let parts = paneKey.split(separator: ":")
         return parts.first.map(String.init) ?? paneKey
     }
 
-    /// Map SSE event type to SessionPhase
     var sessionPhase: SessionPhase {
         switch type {
         case .taskStarted:
@@ -50,7 +74,6 @@ struct SSEEvent: Codable, Sendable {
         }
     }
 
-    /// The most relevant message to display
     var displayMessage: String? {
         switch type {
         case .taskStarted:
@@ -60,7 +83,6 @@ struct SSEEvent: Codable, Sendable {
         }
     }
 
-    /// The role of the display message
     var displayMessageRole: String {
         switch type {
         case .taskStarted:
